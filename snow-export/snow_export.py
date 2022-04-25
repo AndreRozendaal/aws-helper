@@ -242,10 +242,7 @@ def main():
 
     j2_env = Environment(loader=FileSystemLoader("."), trim_blocks=True)
     for snowdata in snowdatas:
-        xml_file = j2_env.get_template("xml_template.xml").render(
-            hostname=snowdata["hostname"],
-            software=snowdata["software"],
-            snowdata=snowdata,
+        xml_file = j2_env.get_template("xml_template.xml").render(snowdata=snowdata,
         )
         print(xml_file)
         try:

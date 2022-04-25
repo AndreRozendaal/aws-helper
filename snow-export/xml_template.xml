@@ -91,7 +91,7 @@
         <model>{{snowdata["processormodel"]}}</model>
         <numberofprocessors>{{snowdata["processors"]}}</numberofprocessors>
     </processor>
-    {% for item in software %}<application>
+    {% for item in snowdata["software"] %}<application>
         <manufacturer>{{ item["Manufacturer"] }}</manufacturer>
         <name>{{ item["Application"] }}</name>
         <version>{{ item["Version"] }}</version>
