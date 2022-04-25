@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<client>
+    <isdmisupported>false</isdmisupported>
+    <isapmsupported>false</isapmsupported>
+    <isplugandplay>false</isplugandplay>
+    <primarybustype>false</primarybustype>
+    <secondarybustype>false</secondarybustype>
+    <hasusb>false</hasusb>
+    <biosreleasedate>1900-01-01T01:00:00</biosreleasedate>
+    <biosmanufacturer />
+    <biosserialnumber>{{snowdata["biosserialnumber"]}}</biosserialnumber>
+    <biosversion>(n/a)</biosversion>
+    <company>false</company>
+    <dmiversion>false</dmiversion>
+    <hasflashbios>false</hasflashbios>
+    <hostname>{{snowdata["hostname"]}}</hostname>
+    <hostmachine />
+    <hypervisorname />
+    <isportable>false</isportable>
+    <lastupdate>2022-02-08T08:56:10</lastupdate>
+    <numberofprocessors>{{snowdata["processors"]}}</numberofprocessors>
+    <manufacturer>AWS</manufacturer>
+    <model>Virtual Machine</model>
+    <username>(n/a)</username>
+    <installdate>1900-01-01T01:00:00</installdate>
+    <sitename>{{snowdata["site"]}}</sitename>
+    <clientidentifier>{{snowdata["biosserialnumber"]}}</clientidentifier>
+    <clienttype>{{snowdata["clienttype"]}}</clienttype>
+    <isvdi>false</isvdi>
+    <isvirtual>true</isvirtual>
+    <ismobiledevice>false</ismobiledevice>
+    <istablet />
+    <memory>
+        <freeslots>0</freeslots>
+        <freeswap>0</freeswap>
+        <maxphysical>0</maxphysical>
+        <totalslots>0</totalslots>
+        <totalphysical>{{snowdata["memory"]}}</totalphysical>
+        <totalvirtual>0</totalvirtual>
+        <freevirtual>0</freevirtual>
+        <freephysical>0</freephysical>
+        <totalswap>0</totalswap>
+    </memory>
+    <networkadapter>
+        <dnsserver>0</dnsserver>
+        <macaddress>{{snowdata["macaddress"]}}</macaddress>
+        <productname />
+        <defaultipgateway>0</defaultipgateway>
+        <dhcpenabled>true</dhcpenabled>
+        <ipaddress>{{snowdata["ipaddress"]}}</ipaddress>
+        <ipsubnet>0</ipsubnet>
+        <dhcpserver>0</dhcpserver>
+    </networkadapter>
+    <operatingsystem>
+        <activedesktop>0</activedesktop>
+        <cdkey>0</cdkey>
+        <defaultbrowser>0</defaultbrowser>
+        <tempdirectory>0</tempdirectory>
+        <username>0</username>
+        <useruilanguage>0</useruilanguage>
+        <buildnumber>{{snowdata["osbuild"]}}</buildnumber>
+        <buildtype>0</buildtype>
+        <codeset>0</codeset>
+        <computername>0</computername>
+        <countrycode>0</countrycode>
+        <currenttimezonecode>0</currenttimezonecode>
+        <domainname>0</domainname>
+        <localecode>0</localecode>
+        <manufacturer>{{snowdata["osmanufacturer"]}}</manufacturer>
+        <name>{{snowdata["osname"]}}</name>
+        <organization>0</organization>
+        <registereduser>0</registereduser>
+        <serialnumber>0</serialnumber>
+        <systemdirectory>0</systemdirectory>
+        <systemuilanguagecode>0</systemuilanguagecode>
+        <version>{{snowdata["osversion"]}}</version>
+        <versioninfo />
+        <windowsdirectory>0</windowsdirectory>
+    </operatingsystem>
+    <processor>
+        <hyperthreading>1</hyperthreading>
+        <mathcoprocessor>1</mathcoprocessor>
+        <mmx>1</mmx>
+        <numberofcores>{{snowdata["coresperprocessor"]}}</numberofcores>
+        <voltage>4</voltage>
+        <currentclockspeed>0</currentclockspeed>
+        <manufacturer>(n/a)</manufacturer>
+        <maxclockspeed>{{snowdata["processorspeed"]}}</maxclockspeed>
+        <name>{{snowdata["processorname"]}}</name>
+        <processorid>0</processorid>
+        <model>{{snowdata["processormodel"]}}</model>
+        <numberofprocessors>{{snowdata["processors"]}}</numberofprocessors>
+    </processor>
+    {% for item in software %}<application>
+        <manufacturer>{{ item["Manufacturer"] }}</manufacturer>
+        <name>{{ item["Application"] }}</name>
+        <version>{{ item["Version"] }}</version>
+    </application>
+    {% endfor %}
+    
+</client>
