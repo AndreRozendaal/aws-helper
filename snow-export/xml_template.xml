@@ -41,6 +41,34 @@
         <freephysical>0</freephysical>
         <totalswap>0</totalswap>
     </memory>
+    {% for item in snowdata["software"] %}<application>
+        <binarytype>0</binarytype>
+        <format>0</format>
+        <installdate>1900-01-01T12:00:00</installdate>
+        <name>{{ item["Application"] }}</name>
+        <islocal>true</islocal>
+        <ismsi>true</ismsi>
+        <isshortcut>false</isshortcut>
+        <processortype>0</processortype>
+        <uninstallstring>0</uninstallstring>
+        <filename />
+        <filepath>(n/a)</filepath>
+        <filedatetime>1900-01-01T12:00:00</filedatetime>
+        <filesize>0</filesize>
+        <version>{{ item["Version"] }}</version>
+        <manufacturer>{{ item["Manufacturer"] }}</manufacturer>
+        <language>Language Neutral</language>
+        <fullcappeakdate>1900-01-01T12:00:00</fullcappeakdate>
+        <isrecognized>true</isrecognized>
+        <coresublimit>0</coresublimit>
+        <issubcapacity>false</issubcapacity>
+        <subcappeakdate>1900-01-01T12:00:00</subcappeakdate>
+        <pvusubcap>0</pvusubcap>
+        <ispvu>false</ispvu>
+        <coresubcap>0</coresubcap>
+        <pvusublimit>0</pvusublimit>
+    </application>
+    {% endfor %}
     <networkadapter>
         <dnsserver>0</dnsserver>
         <macaddress>{{snowdata["macaddress"]}}</macaddress>
@@ -91,11 +119,5 @@
         <model>{{snowdata["processormodel"]}}</model>
         <numberofprocessors>{{snowdata["processors"]}}</numberofprocessors>
     </processor>
-    {% for item in snowdata["software"] %}<application>
-        <manufacturer>{{ item["Manufacturer"] }}</manufacturer>
-        <name>{{ item["Application"] }}</name>
-        <version>{{ item["Version"] }}</version>
-    </application>
-    {% endfor %}
-    
+
 </client>
