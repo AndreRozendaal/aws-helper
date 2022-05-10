@@ -17,12 +17,12 @@
     <hostmachine />
     <hypervisorname />
     <isportable>false</isportable>
-    <lastupdate>2022-02-08T08:56:10</lastupdate>
+    <lastupdate>{{snowdata["lastupdate"]}}</lastupdate>
     <numberofprocessors>{{snowdata["processors"]}}</numberofprocessors>
     <manufacturer>AWS</manufacturer>
     <model>Virtual Machine</model>
     <username>(n/a)</username>
-    <installdate>1900-01-01T01:00:00</installdate>
+    <installdate>{{ snowdata["installdate"] }}</installdate>
     <sitename>{{snowdata["site"]}}</sitename>
     <clientidentifier>{{snowdata["biosserialnumber"]}}</clientidentifier>
     <clienttype>{{snowdata["clienttype"]}}</clienttype>
@@ -44,7 +44,7 @@
     {% for item in snowdata["software"] %}<application>
         <binarytype>0</binarytype>
         <format>0</format>
-        <installdate>1900-01-01T12:00:00</installdate>
+        <installdate>{{ item["InstallDate"] }}</installdate>
         <name>{{ item["Application"] }}</name>
         <islocal>true</islocal>
         <ismsi>true</ismsi>
@@ -119,5 +119,4 @@
         <model>{{snowdata["processormodel"]}}</model>
         <numberofprocessors>{{snowdata["processors"]}}</numberofprocessors>
     </processor>
-
 </client>

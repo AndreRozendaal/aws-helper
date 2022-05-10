@@ -3,6 +3,7 @@ import xml.dom.minidom  # for checking if the xm is valid
 import boto3
 import json
 import sys
+import datetime
 
 boto3.setup_default_session(profile_name="sandbox")
 
@@ -10,7 +11,24 @@ boto3.setup_default_session(profile_name="sandbox")
 # This region does not align to the region where the target EC2 instance lives
 pricing_client = boto3.client("pricing", region_name="us-east-1")
 ssm_client = boto3.client("ssm")
-ec2_client = boto3.resource("ec2")
+ec2_resource = boto3.resource("ec2")
+
+
+def get_all_ec2_volumes():
+    volumes = []
+    volume_iterator = ec2_resource.volumes.all()
+    for v in volume_iterator:
+        for a in v.attachments:
+            volume = ec2_resource.Volume(v.id)
+            volumes.append(
+                {
+                    "id": v.id,
+                    "state": v.state,
+                    "instance": a["InstanceId"],
+                    "create_time": volume.create_time.isoformat(),
+                }
+            )
+    return volumes
 
 
 def sanitize(input):
@@ -151,7 +169,7 @@ def get_ec2_inventory_entries(instanceId, typeName):
 
 
 def get_ec2_instance_details(instanceId):
-    instance = ec2_client.Instance(instanceId)
+    instance = ec2_resource.Instance(instanceId)
     instancedata = {}
     instancedata["instance_type"] = instance.instance_type
     instancedata["image_id"] = instance.image_id
@@ -173,6 +191,8 @@ def convertGiB2MB(memory):
 
 
 def main():
+    volumes = get_all_ec2_volumes()
+
     ec2_instances = get_ec2_instances()
     if len(ec2_instances) == 0:
         print("No EC2 instances found")
@@ -199,11 +219,12 @@ def main():
         inventory = get_ec2_inventory_entries(instanceId, "AWS:Application")
 
         snowdata = {}
+        snowdata["lastupdate"] = datetime.datetime.now().isoformat()
         snowdata["hostname"] = ec2_instance["InstanceId"]
         snowdata["clientidentifier"] = snowdata["hostname"]
         snowdata["site"] = "site"  # To be aligned within Snow Software
         snowdata["manufacturer"] = "AWS"
-        snowdata["biosserialnumber"] = snowdata["site"] + snowdata["hostname"]
+        snowdata["biosserialnumber"] = snowdata["hostname"]
         snowdata["model"] = instancedata["instance_type"]
         snowdata["clienttype"] = ec2_pricing_data[
             "operatingSystem"
@@ -226,11 +247,16 @@ def main():
         snowdata["osbuild"] = ec2_instances[0]["PlatformVersion"]
         snowdata["osmanufacturer"] = getOSManufacturer(ec2_instances[0]["PlatformType"])
 
+        for v in volumes:
+            if v["instance"] == instanceId:
+                snowdata["installdate"] = v["create_time"]
+
         inv = []
 
         for item in inventory:
             inv.append(
                 {
+                    "InstallDate": item["InstalledTime"],
                     "Manufacturer": item["Publisher"],
                     "Application": item["Name"],
                     "Version": item["Version"],
@@ -242,7 +268,8 @@ def main():
 
     j2_env = Environment(loader=FileSystemLoader("."), trim_blocks=True)
     for snowdata in snowdatas:
-        xml_file = j2_env.get_template("xml_template.xml").render(snowdata=snowdata,
+        xml_file = j2_env.get_template("xml_template.xml").render(
+            snowdata=snowdata,
         )
         print(xml_file)
         try:
@@ -253,6 +280,7 @@ def main():
 
         with open(f"{snowdata['hostname']}.xml", "w") as f:
             f.write(xml_file)
+
 
 if __name__ == "__main__":
     main()
