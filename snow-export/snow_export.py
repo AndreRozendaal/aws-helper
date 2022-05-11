@@ -9,6 +9,7 @@ import json
 import sys
 import datetime
 from typing import List, Dict, Optional
+from enum import Enum
 
 boto3.setup_default_session(profile_name="sandbox")
 
@@ -45,35 +46,35 @@ def sanitize(input) -> str:
     """ Sanitize input string to remove whitespace and make it lowercase """
     return input.strip().lower()
 
-
-PRODUCT_LINUX = "linux"
-PRODUCT_WINDOWS = "windows"
-PRODUCT_WINDOWSBYOL = "windowsbyol"
-PRODUCT_ENTERPRISE = "enterprise"
-PRODUCT_STANDARD = "standard"
-PRODUCT_WEB = "web"
+class Product(Enum):
+    PRODUCT_LINUX = "linux"
+    PRODUCT_WINDOWS = "windows"
+    PRODUCT_WINDOWSBYOL = "windowsbyol"
+    PRODUCT_ENTERPRISE = "enterprise"
+    PRODUCT_STANDARD = "standard"
+    PRODUCT_WEB = "web"
 
 
 def interpretProductVersion(productVersion: str) -> Optional[str]:
     switcher = {
-        PRODUCT_LINUX: PRODUCT_LINUX,
-        "l": PRODUCT_LINUX,
-        "lin": PRODUCT_LINUX,
-        PRODUCT_ENTERPRISE: PRODUCT_ENTERPRISE,
-        "e": PRODUCT_ENTERPRISE,
-        "ent": PRODUCT_ENTERPRISE,
-        "standard": PRODUCT_STANDARD,
-        "s": PRODUCT_STANDARD,
-        "std": PRODUCT_STANDARD,
-        PRODUCT_WINDOWS: PRODUCT_WINDOWS,
-        "w": PRODUCT_WINDOWS,
-        "win": PRODUCT_WINDOWS,
-        PRODUCT_WINDOWSBYOL: PRODUCT_WINDOWSBYOL,
-        "wb": PRODUCT_WINDOWSBYOL,
-        "winBYOL": PRODUCT_WINDOWSBYOL,
-        "BYOL": PRODUCT_WINDOWSBYOL,
-        PRODUCT_WEB: PRODUCT_WEB,
-        "wb": PRODUCT_WEB,
+        Product.PRODUCT_LINUX.value: Product.PRODUCT_LINUX.value,
+        "l": Product.PRODUCT_LINUX.value,
+        "lin": Product.PRODUCT_LINUX.value,
+        Product.PRODUCT_ENTERPRISE.value: Product.PRODUCT_ENTERPRISE.value,
+        "e": Product.PRODUCT_ENTERPRISE.value,
+        "ent": Product.PRODUCT_ENTERPRISE.value,
+        "standard": Product.PRODUCT_STANDARD.value,
+        "s": Product.PRODUCT_STANDARD.value,
+        "std": Product.PRODUCT_STANDARD.value,
+        Product.PRODUCT_WINDOWS.value: Product.PRODUCT_WINDOWS.value,
+        "w": Product.PRODUCT_WINDOWS.value,
+        "win": Product.PRODUCT_WINDOWS.value,
+        Product.PRODUCT_WINDOWSBYOL.value: Product.PRODUCT_WINDOWSBYOL.value,
+        "wb": Product.PRODUCT_WINDOWSBYOL.value,
+        "winBYOL": Product.PRODUCT_WINDOWSBYOL.value,
+        "BYOL": Product.PRODUCT_WINDOWSBYOL.value,
+        Product.PRODUCT_WEB.value: Product.PRODUCT_WEB.value,
+        "wb": Product.PRODUCT_WEB.value,
     }
     return switcher.get(productVersion)
 
@@ -82,12 +83,12 @@ def getProductBillingCode(productVersion):
     productVersion = sanitize(productVersion)
     productVersion = interpretProductVersion(productVersion)
     switcher = {
-        PRODUCT_LINUX: "RunInstances",
-        PRODUCT_ENTERPRISE: "RunInstances:0102",
-        PRODUCT_STANDARD: "RunInstances:0006",
-        PRODUCT_WINDOWS: "RunInstances:0002",
-        PRODUCT_WINDOWSBYOL: "RunInstances:0800",
-        PRODUCT_WEB: "RunInstances:0202",
+        Product.PRODUCT_LINUX.value: "RunInstances",
+        Product.PRODUCT_ENTERPRISE.value: "RunInstances:0102",
+        Product.PRODUCT_STANDARD.value: "RunInstances:0006",
+        Product.PRODUCT_WINDOWS.value: "RunInstances:0002",
+        Product.PRODUCT_WINDOWSBYOL.value: "RunInstances:0800",
+        Product.PRODUCT_WEB.value: "RunInstances:0202",
     }
     return switcher.get(productVersion)
 
@@ -176,7 +177,7 @@ def getOSManufacturer(productVersion: str) -> Optional[str]:
     productVersion = sanitize(productVersion)
 
     # This part needs to be adjusted to support other vendors
-    switcher = {PRODUCT_LINUX: "Amazon Inc.", PRODUCT_WINDOWS: "Microsoft Corporation"}
+    switcher = {Product.PRODUCT_LINUX.value: "Amazon Inc.", Product.PRODUCT_WINDOWS.value: "Microsoft Corporation"}
     return switcher.get(productVersion)
 
 
