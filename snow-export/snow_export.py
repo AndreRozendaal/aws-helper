@@ -1,9 +1,14 @@
-from jinja2 import Environment, FileSystemLoader  # for using jinja2 templates
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    exceptions,
+)  # for using jinja2 templates
 import xml.dom.minidom  # for checking if the xm is valid
 import boto3
 import json
 import sys
 import datetime
+from typing import List, Dict, Optional
 
 boto3.setup_default_session(profile_name="sandbox")
 
@@ -14,7 +19,12 @@ ssm_client = boto3.client("ssm")
 ec2_resource = boto3.resource("ec2")
 
 
-def get_all_ec2_volumes():
+def get_all_ec2_volumes() -> List[Dict]:
+    """Get all ec2 volumes
+
+    Returns: a list with dicts with the following keys: id, state, instance and create_time of the volume.
+    """
+
     volumes = []
     volume_iterator = ec2_resource.volumes.all()
     for v in volume_iterator:
@@ -31,7 +41,8 @@ def get_all_ec2_volumes():
     return volumes
 
 
-def sanitize(input):
+def sanitize(input) -> str:
+    """ Sanitize input string to remove whitespace and make it lowercase """
     return input.strip().lower()
 
 
@@ -43,7 +54,7 @@ PRODUCT_STANDARD = "standard"
 PRODUCT_WEB = "web"
 
 
-def interpretProductVersion(productVersion):
+def interpretProductVersion(productVersion: str) -> Optional[str]:
     switcher = {
         PRODUCT_LINUX: PRODUCT_LINUX,
         "l": PRODUCT_LINUX,
@@ -81,7 +92,7 @@ def getProductBillingCode(productVersion):
     return switcher.get(productVersion)
 
 
-def get_ec2_pricing_info(instance_type, platformType):
+def get_ec2_pricing_info(instance_type:str, platformType:str):
     billingCode = getProductBillingCode(platformType)
     product_pager = pricing_client.get_paginator("get_products")
     product_iterator = product_pager.paginate(
@@ -118,7 +129,7 @@ def get_ec2_pricing_info(instance_type, platformType):
             return ec2data
 
 
-def get_ec2_instances():
+def get_ec2_instances() -> List[Dict]:
     instances = []
     pager = ssm_client.get_paginator("describe_instance_information")
     iterator = pager.paginate()
@@ -136,26 +147,6 @@ def get_ec2_instances():
 
     return instances
 
-
-def get_ec2_inventory(instanceIds):
-    inventory = []
-    pager = ssm_client.get_paginator("get_inventory")
-    iterator = pager.paginate(
-        Filters=[
-            {
-                "Type": "Equal",
-                "Key": "AWS:InstanceInformation.InstanceId",
-                "Values": instanceIds,
-            }
-        ],
-        ResultAttributes=[{"TypeName": "AWS:InstanceInformation"}],
-    )
-
-    for item in iterator:
-        print(item)
-    return inventory
-
-
 def get_ec2_inventory_entries(instanceId, typeName):
     inventory = []
     response = ssm_client.list_inventory_entries(
@@ -168,7 +159,11 @@ def get_ec2_inventory_entries(instanceId, typeName):
     return inventory
 
 
-def get_ec2_instance_details(instanceId):
+def get_account_id() -> str:
+    return boto3.client("sts").get_caller_identity()["Account"]
+
+
+def get_ec2_instance_details(instanceId:str) -> Dict:
     instance = ec2_resource.Instance(instanceId)
     instancedata = {}
     instancedata["instance_type"] = instance.instance_type
@@ -177,7 +172,7 @@ def get_ec2_instance_details(instanceId):
     return instancedata
 
 
-def getOSManufacturer(productVersion):
+def getOSManufacturer(productVersion: str) -> Optional[str]:
     productVersion = sanitize(productVersion)
 
     # This part needs to be adjusted to support other vendors
@@ -185,7 +180,7 @@ def getOSManufacturer(productVersion):
     return switcher.get(productVersion)
 
 
-def convertGiB2MB(memory):
+def convertGiB2MB(memory: str) -> int:
     memory = memory.replace(" GiB", "")
     return int(memory) * 1024 * 1024 * 1024
 
@@ -268,17 +263,22 @@ def main():
 
     j2_env = Environment(loader=FileSystemLoader("."), trim_blocks=True)
     for snowdata in snowdatas:
-        xml_file = j2_env.get_template("xml_template.xml").render(
-            snowdata=snowdata,
-        )
-        print(xml_file)
+        try:
+            xml_file = j2_env.get_template("xml_template.xml").render(
+                snowdata=snowdata,
+            )
+        except exceptions.TemplateNotFound:
+            print("Template not found")
+            sys.exit(2)
         try:
             xml.dom.minidom.parseString(xml_file)
         except xml.parsers.expat.ExpatError as error:
             print(f"{snowdata['hostname']}: XML is invalid: {error}")
             raise (error)
 
-        with open(f"{snowdata['hostname']}.xml", "w") as f:
+        filename = f"{get_account_id()}_{snowdata['hostname']}.xml"
+        with open(filename, "w") as f:
+            print(f"Writing {snowdata['hostname']} to {filename}")
             f.write(xml_file)
 
 
