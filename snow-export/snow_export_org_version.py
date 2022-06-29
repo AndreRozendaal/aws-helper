@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from jinja2 import (
     Environment,
     FileSystemLoader,
@@ -10,10 +11,18 @@ import sys
 import datetime
 from typing import List, Dict, Optional
 from enum import Enum
+import logging
+import threading
+import time
+
+
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger('boto3').setLevel(logging.CRITICAL)
+logging.getLogger('botocore').setLevel(logging.CRITICAL)
+logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 
 # us-east-1 is where the pricing api is. Don't modify the following line
 # This region does not align to the region where the target EC2 instance lives
-
 
 def list_accounts():
     """List all accounts in AWS organization."""
@@ -28,7 +37,9 @@ def list_accounts():
     return accounts
 
 
-def create_client(account_id, client_name, role_name="OrganizationAccountAccessRole", region=""):
+def create_client(
+    account_id, client_name, role_name="OrganizationAccountAccessRole", region=""
+):
     """Assume a role into given account_id and return boto3 client.
 
     :param account_id: The id of the account
@@ -49,9 +60,9 @@ def create_client(account_id, client_name, role_name="OrganizationAccountAccessR
             aws_access_key_id=credentials["Credentials"]["AccessKeyId"],
             aws_secret_access_key=credentials["Credentials"]["SecretAccessKey"],
             aws_session_token=credentials["Credentials"]["SessionToken"],
-            region_name=region
+            region_name=region,
         )
-    else: 
+    else:
         client = boto3.client(
             client_name,
             aws_access_key_id=credentials["Credentials"]["AccessKeyId"],
@@ -59,6 +70,7 @@ def create_client(account_id, client_name, role_name="OrganizationAccountAccessR
             aws_session_token=credentials["Credentials"]["SessionToken"],
         )
     return client
+
 
 def create_resource(account_id, client_name, role_name="OrganizationAccountAccessRole"):
     """Assume a role into given account_id and return boto3 client.
@@ -83,6 +95,7 @@ def create_resource(account_id, client_name, role_name="OrganizationAccountAcces
     )
     return client
 
+
 def get_all_ec2_volumes(ec2_resource) -> List[Dict]:
     """Get all ec2 volumes
 
@@ -93,21 +106,26 @@ def get_all_ec2_volumes(ec2_resource) -> List[Dict]:
     volume_iterator = ec2_resource.volumes.all()
     for v in volume_iterator:
         for a in v.attachments:
-            volume = ec2_resource.Volume(v.id)
-            volumes.append(
-                {
-                    "id": v.id,
-                    "state": v.state,
-                    "instance": a["InstanceId"],
-                    "create_time": volume.create_time.isoformat(),
-                }
-            )
+            try: 
+                volume = ec2_resource.Volume(v.id)
+                volumes.append(
+                    {
+                        "id": v.id,
+                        "state": v.state,
+                        "instance": a["InstanceId"],
+                        "create_time": volume.create_time.isoformat(),
+                    }
+                )
+            except Exception:
+                pass
+
     return volumes
 
 
 def sanitize(input) -> str:
-    """ Sanitize input string to remove whitespace and make it lowercase """
+    """Sanitize input string to remove whitespace and make it lowercase"""
     return input.strip().lower()
+
 
 class Product(Enum):
     PRODUCT_LINUX = "linux"
@@ -156,7 +174,7 @@ def getProductBillingCode(productVersion):
     return switcher.get(productVersion)
 
 
-def get_ec2_pricing_info(instance_type:str, platformType:str, pricing_client):
+def get_ec2_pricing_info(instance_type: str, platformType: str, pricing_client):
     billingCode = getProductBillingCode(platformType)
     product_pager = pricing_client.get_paginator("get_products")
     product_iterator = product_pager.paginate(
@@ -185,7 +203,12 @@ def get_ec2_pricing_info(instance_type:str, platformType:str, pricing_client):
             ec2data["physicalProcessor"] = product_attributes["physicalProcessor"]
             ec2data["clockSpeed"] = product_attributes["clockSpeed"]
             ec2data["tenancy"] = product_attributes["tenancy"]
-            ec2data["processorFeatures"] = product_attributes["processorFeatures"]
+
+            if product_attributes.get("processorFeatures"):
+                ec2data["processorFeatures"] = product_attributes["processorFeatures"]
+            else:
+                ec2data["processorFeatures"] = "None"
+
             ec2data["processorArchitecture"] = product_attributes[
                 "processorArchitecture"
             ]
@@ -196,11 +219,11 @@ def get_ec2_pricing_info(instance_type:str, platformType:str, pricing_client):
 def get_ec2_instances(ssm_client) -> List[Dict]:
     instances = []
 
-    try: 
+    try:
         pager = ssm_client.get_paginator("describe_instance_information")
     except Exception as error:
-        print(f"Error getting paginator (get_ec2_instances): {error}")
-        raise(error)
+        logging.error(f"Error getting paginator (get_ec2_instances): {error}")
+        raise (error)
 
     iterator = pager.paginate()
     for item in iterator:
@@ -217,13 +240,28 @@ def get_ec2_instances(ssm_client) -> List[Dict]:
 
     return instances
 
+
 def get_ec2_inventory_entries(instanceId, typeName, ssm_client):
     inventory = []
-    response = ssm_client.list_inventory_entries(
-        InstanceId=instanceId, TypeName=typeName
-    )
+    try:
+        response = ssm_client.list_inventory_entries(
+            InstanceId=instanceId, TypeName=typeName
+        )
+    except Exception as error:
+        logging.error(f"Error getting inventory entries (get_ec2_inventory_entries): {error}")
+
     entries = response["Entries"]
-    captureTime = response["CaptureTime"]
+    while "NextToken" in response:
+        response = ssm_client.list_inventory_entries(
+            InstanceId=instanceId,
+            TypeName=typeName,
+            NextToken=response["NextToken"],
+        )
+        entries.extend(response["Entries"])
+    captureTime = response.get("CaptureTime")
+    if not captureTime:
+        captureTime = "1900-01-01T12:00:00.000000+00:0"
+
     for item in entries:
         inventory.append(item)
     return inventory
@@ -233,7 +271,7 @@ def get_account_id() -> str:
     return boto3.client("sts").get_caller_identity()["Account"]
 
 
-def get_ec2_instance_details(instanceId:str, ec2_resource) -> Dict:
+def get_ec2_instance_details(instanceId: str, ec2_resource) -> Dict:
     instance = ec2_resource.Instance(instanceId)
     instancedata = {}
     instancedata["instance_type"] = instance.instance_type
@@ -246,50 +284,74 @@ def getOSManufacturer(productVersion: str) -> Optional[str]:
     productVersion = sanitize(productVersion)
 
     # This part needs to be adjusted to support other vendors
-    switcher = {Product.PRODUCT_LINUX.value: "Amazon Inc.", Product.PRODUCT_WINDOWS.value: "Microsoft Corporation"}
+    switcher = {
+        Product.PRODUCT_LINUX.value: "Amazon Inc.",
+        Product.PRODUCT_WINDOWS.value: "Microsoft Corporation",
+    }
     return switcher.get(productVersion)
 
 
 def convertGiB2MB(memory: str) -> int:
     memory = memory.replace(" GiB", "")
-    return int(memory) * 1024 * 1024 * 1024
+    return int(float(memory) * 1024 * 1024 * 1024)
 
 
-def main(ec2_resource, ssm_client, pricing_client):
+def gathering_create_files(ec2_resource, ssm_client, pricing_client, account, total):
 
+    total["accounts"] += 1
 
-   
-        volumes = get_all_ec2_volumes(ec2_resource)
-        print(volumes)
-        ec2_instances = get_ec2_instances(ssm_client)
-        if len(ec2_instances) == 0:
-            print("No EC2 instances found")
-            sys.exit(2)
-        else:
-            print("Found " + str(len(ec2_instances)) + " EC2 instances")
-        snowdatas = []
+    volumes = get_all_ec2_volumes(ec2_resource)
+    ec2_instances = get_ec2_instances(ssm_client)
+    if len(ec2_instances) == 0:
+        logging.info("No EC2 instances found")
 
-        for ec2_instance in ec2_instances:
+    else:
+        logging.info("Found " + str(len(ec2_instances)) + " EC2 instances")
+    snowdatas = []
 
-            instanceId = ec2_instance["InstanceId"]  # we need one ec2 instance for api data
-            instancedata = get_ec2_instance_details(ec2_instance["InstanceId"], ec2_resource)
+    for ec2_instance in ec2_instances:
 
-            print(f"{instanceId} ({instancedata['instance_type']}) Gathering data...")
-            ec2_pricing_data = get_ec2_pricing_info(
-                instancedata["instance_type"], ec2_instance["PlatformType"],pricing_client
+        instanceId = ec2_instance["InstanceId"]  # we need one ec2 instance for api data
+
+        logging.info(f"{account['Name']}:{instanceId} Gathering data...")
+        instancedata = get_ec2_instance_details(
+            ec2_instance["InstanceId"], ec2_resource
+        )
+
+        logging.debug(f"{account['Name']}:{instanceId} Gathering pricing data...")
+        ec2_pricing_data = get_ec2_pricing_info(
+            instancedata["instance_type"], ec2_instance["PlatformType"], pricing_client
+        )
+    
+        logging.debug(f"{account['Name']}:{instanceId} inventoryDetailedInfo data...")
+        # https://github.com/awsdocs/aws-systems-manager-user-guide/blob/main/doc_source/sysman-inventory-schema.md
+        inventoryDetailedInfo = get_ec2_inventory_entries(
+            instanceId, "AWS:InstanceDetailedInformation", ssm_client
+        )
+
+        if inventoryDetailedInfo != []:
+            total["collected"] += 1
+
+          
+            inventoryNetworking = get_ec2_inventory_entries(
+                instanceId, "AWS:Network", ssm_client
             )
 
-            # https://github.com/awsdocs/aws-systems-manager-user-guide/blob/main/doc_source/sysman-inventory-schema.md
-            inventoryDetailedInfo = get_ec2_inventory_entries(
-                instanceId, "AWS:InstanceDetailedInformation", ssm_client
+       
+            inventory = get_ec2_inventory_entries(
+                instanceId, "AWS:Application", ssm_client
             )
-            inventoryNetworking = get_ec2_inventory_entries(instanceId, "AWS:Network",ssm_client)
-            inventory = get_ec2_inventory_entries(instanceId, "AWS:Application",ssm_client)
 
+           
             snowdata = {}
+
+        	
             snowdata["lastupdate"] = datetime.datetime.now().isoformat()
+         	
             snowdata["hostname"] = ec2_instance["InstanceId"]
+         
             snowdata["clientidentifier"] = snowdata["hostname"]
+           
             snowdata["site"] = "site"  # To be aligned within Snow Software
             snowdata["manufacturer"] = "AWS"
             snowdata["biosserialnumber"] = snowdata["hostname"]
@@ -303,17 +365,24 @@ def main(ec2_resource, ssm_client, pricing_client):
             snowdata["ismobiledevice"] = False
 
             snowdata["processors"] = inventoryDetailedInfo[0]["CPUCores"]
+
             snowdata["processorname"] = inventoryDetailedInfo[0]["CPUModel"]
             snowdata["coresperprocessor"] = inventoryDetailedInfo[0]["CPUs"]
             snowdata["processorspeed"] = inventoryDetailedInfo[0]["CPUSpeedMHz"]
             snowdata["processormodel"] = inventoryDetailedInfo[0]["CPUModel"]
+         
             snowdata["memory"] = convertGiB2MB(ec2_pricing_data["memory"])
+        
             snowdata["ipaddress"] = inventoryNetworking[0]["IPV4"]
+           
             snowdata["macaddress"] = inventoryNetworking[0]["MacAddress"]
             snowdata["osname"] = ec2_instances[0]["PlatformName"]
             snowdata["osversion"] = ec2_instances[0]["PlatformVersion"]
             snowdata["osbuild"] = ec2_instances[0]["PlatformVersion"]
-            snowdata["osmanufacturer"] = getOSManufacturer(ec2_instances[0]["PlatformType"])
+          
+            snowdata["osmanufacturer"] = getOSManufacturer(
+                ec2_instances[0]["PlatformType"]
+            )
 
             for v in volumes:
                 if v["instance"] == instanceId:
@@ -322,9 +391,12 @@ def main(ec2_resource, ssm_client, pricing_client):
             inv = []
 
             for item in inventory:
+                InstalledTime = item.get("InstalledTime")
+                if not InstalledTime:
+                    InstalledTime = "1900-01-01T12:00:00Z"
                 inv.append(
                     {
-                        "InstallDate": item["InstalledTime"],
+                        "InstallDate": InstalledTime,
                         "Manufacturer": item["Publisher"],
                         "Application": item["Name"],
                         "Version": item["Version"],
@@ -333,53 +405,77 @@ def main(ec2_resource, ssm_client, pricing_client):
 
             snowdata["software"] = inv
             snowdatas.append(snowdata)
+            logging.debug(f"{account['Name']}:{instanceId} snowdata: {snowdata}")
+        else:
+            logging.error(f"Cannot collect data for {instanceId}, no ec2 inventory data")
+            total["not_collected"] += 1
 
-        j2_env = Environment(loader=FileSystemLoader("."), trim_blocks=True)
-        for snowdata in snowdatas:
-            try:
-                xml_file = j2_env.get_template("xml_template.xml").render(
-                    snowdata=snowdata,
-                )
-            except exceptions.TemplateNotFound:
-                print("Template not found")
-                sys.exit(2)
-            try:
-                xml.dom.minidom.parseString(xml_file)
-            except xml.parsers.expat.ExpatError as error:
-                print(f"{snowdata['hostname']}: XML is invalid: {error}")
-                raise (error)
+    j2_env = Environment(loader=FileSystemLoader("."), trim_blocks=True)
+    for snowdata in snowdatas:
+        try:
+            xml_file = j2_env.get_template("xml_template.xml").render(
+                snowdata=snowdata,
+            )
+        except exceptions.TemplateNotFound:
+            logging.error("Template not found")
+            sys.exit(2)
+        try:
+            xml.dom.minidom.parseString(xml_file)
+        except xml.parsers.expat.ExpatError as error:
+            logging.error(f"{snowdata['hostname']}: XML is invalid: {error}")
+            raise (error)
 
-            filename = f"{get_account_id()}_{snowdata['hostname']}.xml"
-            with open(filename, "w") as f:
-                print(f"Writing {snowdata['hostname']} to {filename}")
-                f.write(xml_file)
+        filename = f"{account['Id']}_{account['Name']}_{snowdata['hostname']}.xml"
+        with open(filename, "w") as f:
+            logging.info(f"Writing {snowdata['hostname']} to {filename}")
+            f.write(xml_file)
+
+def main(role_name, account, total): 
+        ssm_client = create_client(account["Id"], "ssm", role_name=role_name)
+        ec2_resource = create_resource(account["Id"], "ec2", role_name=role_name)
+        pricing_client = create_client(
+            account["Id"], "pricing", role_name=role_name, region="us-east-1"
+        )
+    
+        gathering_create_files(
+            ec2_resource, ssm_client, pricing_client, account, total
+        )  # Role needed for running local workplace
+
 
 if __name__ == "__main__":
 
-    # # for one account from commandline
-    # boto3.setup_default_session(profile_name="sandbox")
-    # pricing_client = boto3.client("pricing", region_name="us-east-1")
-    # ssm_client = boto3.client("ssm")
-    # ec2_resource = boto3.resource("ec2")
-
+    total = {"accounts": 0, "collected": 0, "not_collected": 0}
 
     # for all accounts from commandline
-    print("Retrieving AWS Accounts in AWS Organization.")
+    logging.info("Retrieving AWS Accounts in AWS Organization.")
     accounts = list_accounts()
+    threads = list()
 
     for idx, account in enumerate(accounts):
 
-        if account["Id"] != "<account id>":
-            continue         
+        if account["Id"] in [
+        "123456789012", # AWS Account ID
+        ]:  
+            continue
 
-        print(
-            f"Querying {account['Name']} ({idx + 1}/{len(accounts)}) for security compliancy"
-        )
+        logging.info(f"Querying {account['Name']} {account['Id']} ({idx + 1}/{len(accounts)})")
 
         role_name = "OrganizationAccountAccessRoleReadOnly"
-     
-        ssm_client = create_client(account["Id"], "ssm", role_name=role_name)
-        ec2_resource =  create_resource(account["Id"], "ec2", role_name=role_name)
-        pricing_client = create_client(account["Id"], "pricing", role_name=role_name, region="us-east-1")
 
-        main( ec2_resource, ssm_client, pricing_client)  # Role needed for running local workplace
+    
+        x = threading.Thread(target=main, args=(role_name, account, total), daemon=True)
+        print(f"Starting thread {x.name}")
+        threads.append(x)
+        # main(
+        #     ec2_resource, ssm_client, pricing_client, account, total
+        # )  # Role needed for running local workplace
+    for thread in threads:                      # start every thread
+        print(f"active threads: {threading.active_count()}")
+        while threading.activeCount()> 100:     # not more then 200 thread running on the same time.
+                    time.sleep(1)               # sleep 1 second
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    logging.info(total)
