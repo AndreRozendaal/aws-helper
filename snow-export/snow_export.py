@@ -153,8 +153,19 @@ def get_ec2_inventory_entries(instanceId, typeName):
     response = ssm_client.list_inventory_entries(
         InstanceId=instanceId, TypeName=typeName
     )
+
     entries = response["Entries"]
-    captureTime = response["CaptureTime"]
+    while "NextToken" in response:
+        response = ssm_client.list_inventory_entries(
+            InstanceId=instanceId,
+            TypeName=typeName,
+            NextToken=response["NextToken"],
+        )
+        entries.extend(response["Entries"])
+    captureTime = response.get("CaptureTime")
+    if not captureTime:
+        captureTime = "1900-01-01T12:00:00.000000+00:0"
+
     for item in entries:
         inventory.append(item)
     return inventory
